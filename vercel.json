@@ -1,0 +1,6 @@
+{
+  "buildCommand": "node scripts/bundle-client.js",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ]
+}

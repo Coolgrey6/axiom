@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiom admin</title>
+  <link rel="stylesheet" href="/axiom.css">
+</head>
+<body>
+  <main>
+    <img class="brand" src="/logo.jpg" alt="Axiom. Keys for humans. Nothing for machines.">
+    <p><a href="/">Reader</a></p>
+    <div class="card">
+      <h2>Admin</h2>
+      <p class="help">Use this browser to choose what visitors can see. Register once.</p>
+      <button id="bootstrap" type="button">Register this browser</button>
+      <p class="status" id="status"></p>
+      <details>
+        <summary>Admin key</summary>
+        <pre id="public-key">Generating a key…</pre>
+      </details>
+    </div>
+
+    <div class="card">
+    <h2>Add a note or file</h2>
+    <p class="help">Write the description people can read. The note or file opens only after a passkey.</p>
+    <form id="create">
+      <label for="title">Name</label>
+      <input id="title" required placeholder="Welcome">
+      <label for="summary">Description visitors can read</label>
+      <textarea id="summary" required placeholder="A short welcome. The full note opens with a passkey."></textarea>
+      <label for="plaintext">Note</label>
+      <textarea id="plaintext" placeholder="The sealed text."></textarea>
+      <label for="upload">Or choose a file, up to 8 MB</label>
+      <input id="upload" type="file">
+      <label class="row"><input id="is-public" type="checkbox" style="width:auto" checked> Show the description on the public site</label>
+      <details>
+        <summary>Payment</summary>
+        <label class="row"><input id="payment" type="checkbox" style="width:auto"> Ask for payment before the full file opens</label>
+        <label for="price">Price</label>
+        <input id="price" value="0">
+      </details>
+      <button type="submit">Add content</button>
+    </form>
+    <div class="catalog" id="content"></div>
+    </div>
+
+    <div class="card">
+      <h2>Add a page from another server</h2>
+      <p class="help">Visitors see the name and description. The full page opens only after a passkey. Keep the original server private, or anyone can still read it there.</p>
+      <form id="source-form">
+        <label for="source-label">Name</label>
+        <input id="source-label" required placeholder="Pricing">
+        <label for="source-summary">Description visitors can read</label>
+        <textarea id="source-summary" required placeholder="Desk and room prices."></textarea>
+        <label for="source-url">Address of the real page</label>
+        <input id="source-url" required placeholder="http://127.0.0.1:3000/pricing.html">
+        <details>
+          <summary>Optional local path</summary>
+          <label for="mount-path">Path on this site, such as /pricing</label>
+          <input id="mount-path" placeholder="/pricing">
+        </details>
+        <button type="submit">Publish description</button>
+      </form>
+      <div class="catalog" id="sources"></div>
+    </div>
+
+    <details>
+    <div class="card">
+    <h2>Limit who can open a private upload</h2>
+    <p id="selected">Select a content row.</p>
+    <form id="allow">
+      <label for="reader-key">Reader public key</label>
+      <input id="reader-key" required>
+      <button type="submit">Add</button>
+    </form>
+    <table>
+      <thead><tr><th>Key</th><th></th></tr></thead>
+      <tbody id="allowlist"></tbody>
+    </table>
+    </div>
+    </details>
+  </main>
+  <script type="module">
+    import { bytesToBase64, generateSigningKeyPair, signMessage } from '/client.bundle.js'
+
+    const status = document.querySelector('#status')
+    const contentBody = document.querySelector('#content')
+    const allowBody = document.querySelector('#allowlist')
+    const selected = document.querySelector('#selected')
+    let keys = null
+    let currentId = null
+
+    async function adminFetch (path, { method = 'GET', body } = {}) {
+      const timestamp = Date.now().toString()
+      const raw = body === undefined ? '' : JSON.stringify(body)
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
+      const message = `${timestamp}.${method}.${path}.${bytesToBase64(digest)}`
+      const signature = signMessage(keys.privateKey, message)
+      const response = await fetch(path, {
+        method,
+        headers: {
+          'content-type': 'application/json',
+          'x-axiom-admin-key': keys.publicKey,
+          'x-axiom-admin-timestamp': timestamp,
+          'x-axiom-admin-signature': signature
+        },
+        body: method === 'GET' || method === 'DELETE' ? undefined : raw
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || response.statusText)
+      return payload
+    }
+
+    async function loadAllowlist (id) {
+      currentId = id
+      selected.textContent = id
+      const rows = await adminFetch(`/admin/content/${encodeURIComponent(id)}/allowlist`)
+      allowBody.replaceChildren()
+      for (const row of rows) {
+        const tr = document.createElement('tr')
+        const key = document.createElement('td')
+        key.textContent = row.publicKey
+        const action = document.createElement('td')
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'quiet'
+        button.textContent = 'Remove'
+        button.addEventListener('click', async () => {
+          status.textContent = ''
+          try {
+            await adminFetch(`/admin/allowlist/${row.id}`, { method: 'DELETE' })
+            await loadAllowlist(id)
+          } catch (error) {
+            status.textContent = error.message
+          }
+        })
+        action.append(button)
+        tr.append(key, action)
+        allowBody.append(tr)
+      }
+    }
+
+    async function loadSources () {
+      const rows = await adminFetch('/admin/sources')
+      const body = document.querySelector('#sources')
+      body.replaceChildren()
+      for (const row of rows) {
+        const card = document.createElement('article')
+        const title = document.createElement('h3')
+        title.textContent = row.label
+        const summary = document.createElement('p')
+        summary.textContent = row.summary
+        const link = document.createElement('a')
+        link.href = row.mountPath || row.visitorPath
+        link.textContent = 'Visitor link'
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'quiet'
+        button.textContent = 'Remove'
+        button.addEventListener('click', async () => {
+          status.textContent = ''
+          try {
+            await adminFetch(`/admin/sources/${encodeURIComponent(row.id)}`, { method: 'DELETE' })
+            await loadSources()
+          } catch (error) {
+            status.textContent = error.message
+          }
+        })
+        card.append(title, summary, link, button)
+        body.append(card)
+      }
+    }
+
+    async function loadContent () {
+      const rows = await adminFetch('/admin/content')
+      contentBody.replaceChildren()
+      for (const row of rows) {
+        const card = document.createElement('article')
+        if (row.id === currentId) card.className = 'selected'
+        const title = document.createElement('h3')
+        title.textContent = row.title
+        const summary = document.createElement('p')
+        summary.textContent = row.summary || (row.isPublic ? 'No description yet.' : 'Hidden from the public list.')
+        const link = document.createElement('a')
+        link.href = `/view.html?content=${encodeURIComponent(row.id)}`
+        link.textContent = row.isPublic ? 'Visitor link' : 'Private link'
+        card.append(title, summary, link)
+        card.addEventListener('click', async (event) => {
+          if (event.target.closest('a')) return
+          status.textContent = ''
+          try {
+            await loadAllowlist(row.id)
+            selected.textContent = row.title
+            await loadContent()
+          } catch (error) {
+            status.textContent = error.message
+          }
+        })
+        contentBody.append(card)
+      }
+    }
+
+    try {
+      const savedPublic = sessionStorage.getItem('axiom.admin.publicKey')
+      const savedPrivate = sessionStorage.getItem('axiom.admin.privateKey')
+      if (savedPublic && savedPrivate) {
+        keys = { publicKey: savedPublic, privateKey: savedPrivate }
+      } else {
+        const pair = generateSigningKeyPair()
+        keys = pair
+        sessionStorage.setItem('axiom.admin.publicKey', keys.publicKey)
+        sessionStorage.setItem('axiom.admin.privateKey', keys.privateKey)
+      }
+      document.querySelector('#public-key').textContent = keys.publicKey
+      try {
+        await loadSources()
+        await loadContent()
+      } catch {
+        status.textContent = 'Register this browser as admin to open the control panel.'
+      }
+    } catch (error) {
+      status.textContent = error.message
+    }
+
+    document.querySelector('#bootstrap').addEventListener('click', async () => {
+      status.textContent = ''
+      const response = await fetch('/admin/bootstrap', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ publicKey: keys.publicKey })
+      })
+      const body = await response.json()
+      status.textContent = response.ok ? 'This browser is the admin.' : body.error
+      if (response.ok) {
+        try {
+          await loadSources()
+          await loadContent()
+        } catch (error) {
+          status.textContent = error.message
+        }
+      }
+    })
+
+    document.querySelector('#source-form').addEventListener('submit', async (event) => {
+      event.preventDefault()
+      status.textContent = ''
+      try {
+        await adminFetch('/admin/sources', {
+          method: 'POST',
+          body: {
+            label: document.querySelector('#source-label').value,
+            summary: document.querySelector('#source-summary').value,
+            sourceUrl: document.querySelector('#source-url').value,
+            mountPath: document.querySelector('#mount-path').value
+          }
+        })
+        event.target.reset()
+        await loadSources()
+      } catch (error) {
+        status.textContent = error.message
+      }
+    })
+
+    document.querySelector('#create').addEventListener('submit', async (event) => {
+      event.preventDefault()
+      status.textContent = ''
+      try {
+        const body = {
+          title: document.querySelector('#title').value,
+          summary: document.querySelector('#summary').value,
+          isPublic: document.querySelector('#is-public').checked,
+          paymentRequired: document.querySelector('#payment').checked,
+          price: Number(document.querySelector('#price').value || 0)
+        }
+        const upload = document.querySelector('#upload').files[0]
+        if (upload) {
+          if (upload.size > 8 * 1024 * 1024) throw new Error('file is larger than 8 MB')
+          body.file = {
+            name: upload.name,
+            type: upload.type || 'application/octet-stream',
+            data: bytesToBase64(new Uint8Array(await upload.arrayBuffer()))
+          }
+        } else {
+          const plaintext = document.querySelector('#plaintext').value
+          if (!plaintext) throw new Error('Add text or choose a file.')
+          body.plaintext = plaintext
+        }
+        await adminFetch('/admin/content', { method: 'POST', body })
+        event.target.reset()
+        await loadContent()
+      } catch (error) {
+        status.textContent = error.message
+      }
+    })
+
+    document.querySelector('#allow').addEventListener('submit', async (event) => {
+      event.preventDefault()
+      status.textContent = ''
+      if (!currentId) {
+        status.textContent = 'Select a content row.'
+        return
+      }
+      try {
+        await adminFetch(`/admin/content/${encodeURIComponent(currentId)}/allowlist`, {
+          method: 'POST',
+          body: { publicKey: document.querySelector('#reader-key').value.trim() }
+        })
+        event.target.reset()
+        await loadAllowlist(currentId)
+      } catch (error) {
+        status.textContent = error.message
+      }
+    })
+  </script>
+</body>
+</html>

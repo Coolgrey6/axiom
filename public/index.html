@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiom</title>
+  <link rel="stylesheet" href="/axiom.css">
+</head>
+<body>
+  <main>
+    <img class="brand" src="/logo.jpg" alt="Axiom. Keys for humans. Nothing for machines.">
+    <p class="lead">Each card is the public description. Open a card to read the full page. Automated visitors stop at the description.</p>
+    <div class="catalog" id="pages"><p class="help">Nothing is published yet.</p></div>
+    <p><a href="/admin.html">Admin</a></p>
+  </main>
+  <script type="module">
+    const pages = document.querySelector('#pages')
+    const labels = { page: 'Page', note: 'Note', file: 'File' }
+    try {
+      const list = await (await fetch('/catalog')).json()
+      if (Array.isArray(list) && list.length) {
+        pages.replaceChildren()
+        for (const item of list) {
+          const card = document.createElement('article')
+          const kind = document.createElement('div')
+          kind.className = 'kind'
+          kind.textContent = labels[item.kind] || 'Page'
+          const title = document.createElement('h3')
+          title.textContent = item.title
+          const summary = document.createElement('p')
+          summary.textContent = item.summary || 'No public description yet.'
+          const link = document.createElement('a')
+          link.href = item.href
+          link.textContent = item.kind === 'file' ? 'Open the file' : 'Open the full page'
+          card.append(kind, title, summary, link)
+          pages.append(card)
+        }
+      }
+    } catch {
+      pages.textContent = 'The page list could not be loaded.'
+    }
+  </script>
+</body>
+</html>

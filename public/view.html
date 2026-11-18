@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiom</title>
+  <link rel="stylesheet" href="/axiom.css">
+</head>
+<body>
+  <main>
+    <p><a href="/">All pages</a></p>
+    <div class="card" id="intro">
+      <div class="kind" id="kind">Page</div>
+      <h1 id="title">Loading…</h1>
+      <p class="summary" id="summary"></p>
+      <p class="help">This description is public. The full page opens after a passkey check, so scripts and crawlers do not receive it.</p>
+      <button id="unlock" type="button">Open the full page</button>
+      <button id="register" class="quiet" type="button">Set up this browser</button>
+      <p class="status" id="status"></p>
+    </div>
+    <div id="output"></div>
+  </main>
+  <script type="module">
+    import { loadReaderKey, registerPasskey, showOpened, unlockObject } from '/unlock.js'
+
+    const status = document.querySelector('#status')
+    const output = document.querySelector('#output')
+    const params = new URLSearchParams(location.search)
+    const sourceId = params.get('id') || ''
+    const contentId = params.get('content') || ''
+    const keys = loadReaderKey()
+    const labels = { page: 'Page', note: 'Note', file: 'File' }
+
+    if (!sourceId && !contentId) {
+      document.querySelector('#title').textContent = 'Missing page'
+      status.textContent = 'This link does not point at a page.'
+    } else {
+      const match = (await (await fetch('/catalog')).json()).find((item) => item.id === (sourceId || contentId))
+      if (!match) {
+        document.querySelector('#title').textContent = 'Page not found'
+      } else {
+        document.title = match.title
+        document.querySelector('#kind').textContent = labels[match.kind] || 'Page'
+        document.querySelector('#title').textContent = match.title
+        document.querySelector('#summary').textContent = match.summary || 'No public description yet.'
+        document.querySelector('#unlock').textContent = match.kind === 'file' ? 'Open the file' : 'Open the full page'
+      }
+    }
+
+    document.querySelector('#register').addEventListener('click', async () => {
+      status.textContent = ''
+      try {
+        await registerPasskey()
+        status.textContent = 'This browser is ready. Open the full page.'
+      } catch (error) {
+        status.textContent = error.message
+      }
+    })
+
+    document.querySelector('#unlock').addEventListener('click', async () => {
+      status.textContent = ''
+      if (!sourceId && !contentId) return
+      try {
+        const opened = sourceId
+          ? await unlockObject({ contentId: `src:${sourceId}`, keyPath: `/source/${encodeURIComponent(sourceId)}/key`, keys })
+          : await unlockObject({ contentId, keyPath: `/content/${encodeURIComponent(contentId)}/key`, keys })
+        document.querySelector('#intro').hidden = true
+        showOpened(output, opened, 'page.bin')
+      } catch (error) {
+        status.textContent = error.name === 'NotAllowedError'
+          ? 'The passkey was cancelled. Set up this browser if this is your first visit.'
+          : error.message
+      }
+    })
+  </script>
+</body>
+</html>

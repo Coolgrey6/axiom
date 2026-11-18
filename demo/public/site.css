@@ -1,0 +1,8 @@
+body { margin: 0; font: 18px/1.5 Georgia, serif; color: #1d2430; background: #f7f4ee; }
+header { display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 1rem 1.5rem; background: #1d2430; color: #f7f4ee; }
+.mark { margin: 0; letter-spacing: 0.04em; }
+nav a { color: #f7f4ee; margin-left: 1rem; }
+main { max-width: 38rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+table { border-collapse: collapse; }
+th, td { text-align: left; padding: 0.4rem 1rem 0.4rem 0; }
+a { color: #1d2430; }

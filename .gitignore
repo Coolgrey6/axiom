@@ -1,0 +1,12 @@
+node_modules/
+data/*.db
+data/*.db-*
+data/blobs/
+data/master.key
+data/signing.json
+data/cookie.secret
+public/client.bundle.js
+data/*.mmdb
+certs/*.pem
+certs/*.key
+certs/*.crt
