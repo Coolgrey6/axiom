@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private access</title>
+  <link rel="stylesheet" href="/axiom.css">
+</head>
+<body>
+  <main>
+    <img class="brand" src="/logo.jpg" alt="Axiom">
+    <div class="card">
+      <h1>Private access</h1>
+      <p class="lead">Enter the site password.</p>
+      <form id="login">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Unlock</button>
+        <p class="status" id="status"></p>
+      </form>
+    </div>
+  </main>
+  <script>
+    const next = new URLSearchParams(location.search).get('next') || '/'
+    const dest = next.startsWith('/') && !next.startsWith('//') ? next : '/'
+    const status = document.querySelector('#status')
+    document.querySelector('#login').addEventListener('submit', async (event) => {
+      event.preventDefault()
+      status.textContent = ''
+      const button = event.target.querySelector('button')
+      button.disabled = true
+      button.textContent = 'Checking…'
+      try {
+        const response = await fetch('/site-login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ password: document.querySelector('#password').value })
+        })
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(body.error || 'login failed')
+        location.replace(dest)
+      } catch (error) {
+        status.textContent = error.message
+        button.disabled = false
+        button.textContent = 'Unlock'
+      }
+    })
+  </script>
+</body>
+</html>

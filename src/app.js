@@ -14,6 +14,13 @@ import sourceRoutes from './routes/sources.js'
 import { manualPayment, registerModule } from './modules.js'
 import { matchMount } from './sources.js'
 import { startSmtp } from './smtp.js'
+import {
+  createSessionToken,
+  passwordsMatch,
+  setSiteCookie,
+  sitePasswordAllows,
+  sitePasswordEnabled
+} from './sitePassword.js'
 
 export async function createApp ({ https = null } = {}) {
   const app = Fastify({
@@ -45,6 +52,24 @@ export async function createApp ({ https = null } = {}) {
 
   await app.register(fastifyCookie, { secret: cookieSecret })
   app.addHook('onRequest', createFirewallHook())
+  app.post('/site-login', async (request, reply) => {
+    const expected = process.env.APP_PASSWORD
+    if (!expected) return reply.code(503).send({ error: 'APP_PASSWORD is not configured on the server' })
+    const password = request.body?.password ?? ''
+    if (!passwordsMatch(password, expected)) return reply.code(401).send({ error: 'invalid password' })
+    setSiteCookie(reply, createSessionToken())
+    return { ok: true }
+  })
+  app.addHook('onRequest', async (request, reply) => {
+    if (!sitePasswordEnabled() || sitePasswordAllows(request)) return
+    const path = request.url.split('?')[0]
+    const wantsJson = path.startsWith('/admin') || path.startsWith('/content') || path.startsWith('/source') || path.startsWith('/sources') || path.startsWith('/catalog') || path.startsWith('/webauthn') || path.startsWith('/mail') || path.startsWith('/pay') || path.startsWith('/verify') || path.startsWith('/health')
+    if (wantsJson || request.headers.accept?.includes('application/json')) {
+      return reply.code(401).send({ error: 'unauthorized' })
+    }
+    const next = encodeURIComponent(path && path.startsWith('/') ? path : '/')
+    return reply.redirect(`/login.html?next=${next}`)
+  })
   if (process.env.VERCEL) {
     app.addHook('onClose', async () => {
       app.db.close()
