@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { createApp } from './app.js'
+import { createApp } from './createApp.js'
 
 const keyPath = path.resolve('certs', 'key.pem')
 const certPath = path.resolve('certs', 'cert.pem')

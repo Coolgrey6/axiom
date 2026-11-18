@@ -10,3 +10,4 @@ data/*.mmdb
 certs/*.pem
 certs/*.key
 certs/*.crt
+.vercel

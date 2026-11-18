@@ -4,7 +4,7 @@ if (host && !process.env.AXIOM_ORIGIN) {
   process.env.AXIOM_RP_ID = host
 }
 
-const { createApp } = await import('../src/app.js')
+const { createApp } = await import('../src/createApp.js')
 const app = await createApp()
 await app.ready()
 
